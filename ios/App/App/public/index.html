@@ -2773,11 +2773,10 @@ padding:2px;
 flex-shrink:0
 }
 .store-row-txt{flex:1;min-width:0}
-/* Händler-Liste im Menü: eine gruppierte Karte mit Trennlinien statt
-   einzelner Kästen; je Zeile Name, Adresse und einzeilig Status/Zeiten
+/* Händler-Liste im Menü: ohne Rahmen, Märkte nur durch Trennlinien getrennt; je Zeile Name, Adresse und einzeilig Status/Zeiten
    (Zeiten je Tagesblock in eigener Zeile, alles bricht um statt abgeschnitten zu werden), rechts Entfernung + Pin. */
-.menu-store-list{background:var(--bg-surface-sunken);border:1px solid var(--border-subtle);border-radius:var(--radius-md);overflow:hidden}
-.menu-store{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 6px}
+.menu-store-list{overflow:hidden}
+.menu-store{display:flex;align-items:center;gap:12px;padding:12px 10px 12px 14px}
 #menuStoresPanel .menu-acc-panel-inner{padding-left:6px;padding-right:6px}
 .menu-store + .menu-store{border-top:1px solid var(--border-subtle)}
 .menu-store-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}

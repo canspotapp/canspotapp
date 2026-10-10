@@ -25,12 +25,13 @@
 <script>
 (function(){
   try{
-    var t = localStorage.getItem("canspot-theme") || "system";
+    // Standard für alle: dunkel. Eine eigene Wahl (Hell/Dunkel/System) bleibt erhalten.
+    var t = localStorage.getItem("canspot-theme") || "dark";
     var resolved = t==="system"
       ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
       : t;
     document.documentElement.setAttribute("data-theme", resolved);
-  }catch(e){}
+  }catch(e){ document.documentElement.setAttribute("data-theme", "dark"); }
   /* Firefox braucht für flüssige Animationen eigene Regeln (.ua-firefox) */
   if(/\bFirefox\//.test(navigator.userAgent)) document.documentElement.classList.add("ua-firefox");
 })();
@@ -11258,7 +11259,8 @@ try{ localStorage.removeItem("canspot-avatar"); }catch(e){}
 
 /* ---------------- THEME (Hell / Dunkel / System) ---------------- */
 
-let themePref = localStorage.getItem("canspot-theme") || "system";
+let themePref = "dark";
+try{ themePref = localStorage.getItem("canspot-theme") || "dark"; }catch(e){}
 
 function systemPrefersDark(){
   return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;

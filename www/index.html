@@ -2825,6 +2825,10 @@ border-radius:var(--radius-lg);
 padding:14px;
 margin-top:8px
 }
+.alert-mode{display:flex;gap:4px;padding:3px;margin-bottom:12px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:999px}
+.alert-mode-btn{flex:1;padding:7px 10px;border:0;border-radius:999px;background:none;color:var(--text-muted);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+.alert-mode-btn.on{background:var(--brand-primary-blue);color:#fff}
+#pdAlertModeAvail[hidden],#pdAlertModePrice[hidden]{display:none}
 .alert-input-row{
 display:flex;
 align-items:center;
@@ -5827,11 +5831,23 @@ Weitere Händler <svg class="icon icon-xs store-more-chevron"><use href="#i-chev
 <div class="detail-alert-panel" id="pdAlertPanel">
 <div class="detail-alert-panel-inner">
 <div class="alert-box">
+<div class="alert-mode" role="tablist" aria-label="Art der Benachrichtigung">
+<button type="button" class="alert-mode-btn on" data-alert-mode="price" role="tab" aria-selected="true">Preisalarm</button>
+<button type="button" class="alert-mode-btn" data-alert-mode="available" role="tab" aria-selected="false">Wenn verfügbar</button>
+</div>
+<div id="pdAlertModePrice">
 <div class="desc" style="margin-bottom:0">Benachrichtige mich, sobald der Preis auf … fällt</div>
 <div class="alert-input-row">
 <input type="text" inputmode="decimal" id="pdAlertPriceInput">
 <span>€</span>
 <button class="btn primary" id="pdAlertSetBtn">Preisalarm aktivieren</button>
+</div>
+</div>
+<div id="pdAlertModeAvail" hidden>
+<div class="desc" style="margin-bottom:0">Benachrichtige mich, sobald das Produkt in einem Markt erhältlich ist, egal zu welchem Preis.</div>
+<div class="alert-input-row">
+<button class="btn primary" id="pdAlertAvailBtn">Benachrichtigung aktivieren</button>
+</div>
 </div>
 <div class="alert-active" id="pdAlertActiveMsg" style="display:none"></div>
 </div>
@@ -6758,7 +6774,11 @@ let collapsedPeriodWeeks = new Set();
 let committedSearch = "";
 let chartRangeDays = 30;
 
-/* { [productId]: { target, enabled } } aus public.price_alerts */
+/* { [productId]: { target, enabled } } aus public.price_alerts;
+   target null = nur benachrichtigen, sobald das Produkt verfügbar ist. */
+function alertLabel(alert){
+  return alert.target == null ? "Benachrichtigung, sobald verfügbar" : `Aktiver Alarm bei ${euro(alert.target)} €`;
+}
 let priceAlerts = {};
 
 /* Produkt-Bewertung (Detailansicht, nur mobil - siehe .detail-rating CSS):
@@ -8771,7 +8791,8 @@ function renderAlertsView(){
 
   alertsView.innerHTML = eventsHtml + entries.map(e=>{
     const unavailable = e.currentBest === null;
-    const reached = !unavailable && e.currentBest <= e.alert.target + 0.001;
+    const availOnly = e.alert.target == null;
+    const reached = !unavailable && (availOnly || e.currentBest <= e.alert.target + 0.001);
     return `
       <article class="card alert-card">
         <div class="line">
@@ -8789,15 +8810,15 @@ function renderAlertsView(){
         </div>
         <div class="alert-compare">
           <div class="alert-compare-box">
-            <span>Zielpreis</span>
-            <b>${euro(e.alert.target)} €</b>
+            <span>${availOnly ? "Benachrichtigung" : "Zielpreis"}</span>
+            <b>${availOnly ? "Wenn verfügbar" : euro(e.alert.target) + " €"}</b>
           </div>
           <div class="alert-compare-box ${reached ? "reached" : ""}">
             <span>Aktueller Preis</span>
             <b>${unavailable ? "–" : euro(e.currentBest)+" €"}</b>
           </div>
         </div>
-        ${reached ? `<div class="info-badge green" style="margin-top:10px"><svg class="icon icon-xs"><use href="#i-celebrate"/></svg> Zielpreis erreicht!</div>` : ""}
+        ${reached ? `<div class="info-badge green" style="margin-top:10px"><svg class="icon icon-xs"><use href="#i-celebrate"/></svg> ${availOnly ? "Jetzt verfügbar!" : "Zielpreis erreicht!"}</div>` : ""}
         ${unavailable ? `<div class="info-badge expired" style="margin-top:10px"><svg class="icon icon-xs"><use href="#i-x"/></svg> Aktuell nicht verfügbar</div>` : ""}
         <div class="alert-card-actions">
           <button class="btn" data-alert-open="${e.product.id}" ${unavailable ? "disabled" : ""}>Angebote ansehen</button>
@@ -10147,7 +10168,7 @@ async function loadUserData(){
   if(!alertRes.error){
     priceAlerts = {};
     (alertRes.data || []).forEach(r=>{
-      priceAlerts[r.product_id] = { target:Number(r.target_price), enabled:r.enabled };
+      priceAlerts[r.product_id] = { target: r.target_price == null ? null : Number(r.target_price), enabled:r.enabled };
     });
   }
   if(!ratingRes.error){
@@ -11430,6 +11451,21 @@ function getRelevantNotifications(){
     });
   });
 
+  Object.entries(priceAlerts).forEach(([pid, alert])=>{
+    if(!alert.enabled || alert.target != null) return;
+    const active = deals.filter(d=>d.productId===pid && daysUntil(d.validFrom)<=0 && daysUntil(d.validUntil)>=0 && d.offerPrice!==null);
+    if(!active.length) return;
+    const best = active.reduce((a,b)=> a.offerPrice<=b.offerPrice ? a : b);
+    notifications.push({
+      id: `available-${best.id}`,
+      icon: "i-bell",
+      cls: "green",
+      text: `${best.product} ist jetzt verfügbar: bei ${best.store} für ${euro(best.offerPrice)} €.`,
+      dealId: best.id,
+      productId: pid
+    });
+  });
+
   const deletedIds = loadDeletedNewsIds();
   return notifications.filter(n=>!deletedIds.has(n.id));
 }
@@ -12081,7 +12117,7 @@ function openHistory(dealId){
 
   const alertInput = document.getElementById("alertPriceInput");
   const existingAlert = priceAlerts[deal.productId];
-  alertInput.value = euro(existingAlert ? existingAlert.target : Math.max(0, +(deal.offerPrice - 0.10).toFixed(2)));
+  alertInput.value = euro(existingAlert && existingAlert.target != null ? existingAlert.target : Math.max(0, +(deal.offerPrice - 0.10).toFixed(2)));
   updateAlertActiveMsg(deal.productId);
 
   const ctaBtn = document.getElementById("detailCtaBtn");
@@ -12884,7 +12920,7 @@ function renderProductAlertPanel(productId, deal){
       return;
     }
     activeMsg.style.display = "flex";
-    activeMsg.innerHTML = `<span><svg class="icon icon-sm"><use href="#i-target"/></svg> Aktiver Alarm bei ${euro(alert.target)} €</span><button type="button" data-remove-pd-alert>entfernen</button>`;
+    activeMsg.innerHTML = `<span><svg class="icon icon-sm"><use href="#i-target"/></svg> ${alertLabel(alert)}</span><button type="button" data-remove-pd-alert>entfernen</button>`;
     activeMsg.querySelector("[data-remove-pd-alert]").addEventListener("click", ()=>{
       removePriceAlert(productId);
       renderActiveState();
@@ -12894,7 +12930,7 @@ function renderProductAlertPanel(productId, deal){
   }
 
   const existingAlert = priceAlerts[productId];
-  input.value = existingAlert ? euro(existingAlert.target)
+  input.value = existingAlert && existingAlert.target != null ? euro(existingAlert.target)
     : typeof ref === "number" ? euro(Math.max(0, +(ref - 0.10).toFixed(2))) : "";
   renderActiveState();
 
@@ -12902,6 +12938,25 @@ function renderProductAlertPanel(productId, deal){
     const nowOpen = !panel.classList.contains("open");
     panel.classList.toggle("open", nowOpen);
     btn.setAttribute("aria-expanded", String(nowOpen));
+  };
+
+  const setMode = (mode)=>{
+    panel.querySelectorAll("[data-alert-mode]").forEach(b=>{
+      const on = b.dataset.alertMode === mode;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-selected", String(on));
+    });
+    document.getElementById("pdAlertModePrice").hidden = mode !== "price";
+    document.getElementById("pdAlertModeAvail").hidden = mode !== "available";
+  };
+  setMode(existingAlert && existingAlert.target == null ? "available" : "price");
+  panel.querySelectorAll("[data-alert-mode]").forEach(b=>{ b.onclick = ()=> setMode(b.dataset.alertMode); });
+  document.getElementById("pdAlertAvailBtn").onclick = () => {
+    if(!requireAccount("Melde dich an, um Benachrichtigungen zu speichern.")) return;
+    setPriceAlert(productId, null);
+    renderActiveState();
+    updateAlertsDot();
+    showToast(`Du wirst benachrichtigt, sobald ${name} verfügbar ist.`);
   };
 
   setBtn.onclick = () => {
@@ -13167,7 +13222,7 @@ function updateAlertActiveMsg(productId){
     return;
   }
   msg.style.display = "flex";
-  msg.innerHTML = `<span><svg class="icon icon-sm"><use href="#i-target"/></svg> Aktiver Alarm bei ${euro(alert.target)} €</span><button data-remove-alert="${productId}">entfernen</button>`;
+  msg.innerHTML = `<span><svg class="icon icon-sm"><use href="#i-target"/></svg> ${alertLabel(alert)}</span><button data-remove-alert="${productId}">entfernen</button>`;
   msg.querySelector("[data-remove-alert]").addEventListener("click", ()=>{
     removePriceAlert(productId);
     updateAlertActiveMsg(productId);

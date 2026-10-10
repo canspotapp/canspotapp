@@ -377,7 +377,7 @@ create table public.price_alerts (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references auth.users(id) on delete cascade,
   product_id    uuid not null references public.products(id) on delete cascade,
-  target_price  numeric(10,2) not null check (target_price > 0),
+  target_price  numeric(10,2) check (target_price > 0),  -- NULL = Benachrichtigung, sobald verfügbar
   enabled       boolean not null default true,
   created_at    timestamptz not null default now(),
   constraint price_alerts_unique unique (user_id, product_id)

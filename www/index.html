@@ -4221,8 +4221,7 @@ linear-gradient(160deg,#171d2c 0%,#10141c 100%)
 }
 /* Bühne (Neuheiten und Coming Soon): Hintergrund und Farbschein stehen
    still. Die Dose gleitet beim ersten Erscheinen leicht vergrößert ins Bild
-   (npEnter) und dreht sich danach langsam in 3D hin und her (npSway); ein
-   heller Lichtstreif zieht ab und zu über die Bühne (npShine). */
+   (npEnter) und dreht sich danach langsam in 3D hin und her (npSway). */
 .np-media img{
 height:108px;
 max-width:50%;
@@ -4233,17 +4232,7 @@ will-change:transform;
 backface-visibility:hidden
 }
 .np-media.np-wait img{opacity:0;animation:none}
-.np-media.np-in img{animation:npEnter .8s cubic-bezier(.2,.9,.25,1.12) both, npSway 7s cubic-bezier(.45,0,.55,1) .8s infinite}
-.np-media::after{
-content:"";
-position:absolute;
-inset:0;
-z-index:1;
-pointer-events:none;
-background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.16) 50%,transparent 65%);
-transform:translateX(-120%);
-animation:npShine 7s ease-in-out 1.2s infinite
-}
+.np-media.np-in img{animation:npEnter 1.3s cubic-bezier(.25,.8,.3,1) both, npSway 7s cubic-bezier(.45,0,.55,1) 1.3s infinite}
 /* Farbschein dahinter: das Produktbild, einmalig winzig in ein Canvas
    gerechnet und weichgezeichnet (npPaintGlow), hier nur vergrößert
    angezeigt. Bewusst ohne CSS-Filter und ohne eigene Grafikebene: Safari
@@ -4261,19 +4250,15 @@ opacity:.5
 }
 :root[data-theme="dark"] .np-media .np-media-bg{opacity:.62}
 /* jede zweite Karte versetzt, damit nichts im Gleichtakt läuft */
-.np-card:nth-child(2n) .np-media.np-in img{animation-delay:0s,-3.5s}
-.np-card:nth-child(2n) .np-media::after{animation-delay:4.7s}
 @keyframes npEnter{
-0%{opacity:0;transform:perspective(700px) translate3d(0,22px,0) scale(.88) rotateY(-18deg)}
+0%{opacity:0;transform:perspective(700px) translate3d(0,56px,0) scale(.6) rotateY(-70deg)}
+55%{opacity:1;transform:perspective(700px) translate3d(0,-10px,0) scale(1.1) rotateY(12deg)}
+78%{transform:perspective(700px) translate3d(0,3px,0) scale(.97) rotateY(-14deg)}
 100%{opacity:1;transform:perspective(700px) translate3d(0,0,0) scale(1) rotateY(-9deg)}
 }
 @keyframes npSway{
 0%,100%{transform:perspective(700px) translate3d(0,0,0) rotateY(-9deg) rotateZ(-1deg)}
 50%{transform:perspective(700px) translate3d(0,-4px,0) rotateY(9deg) rotateZ(1deg)}
-}
-@keyframes npShine{
-0%{transform:translateX(-120%)}
-22%,100%{transform:translateX(120%)}
 }
 /* Firefox: ohne eigene Grafikebene, sonst ruckelt die langsame Bewegung. */
 .ua-firefox .np-media img{
@@ -4282,10 +4267,10 @@ will-change:auto;
 backface-visibility:visible
 }
 /* Karten außerhalb des sichtbaren Bereichs pausieren (npWatchMotion) */
-.np-media.np-idle img,.np-media.np-idle::after{animation-play-state:paused}
+.np-media.np-idle img{animation-play-state:paused}
 .np-media .np-badge,.np-media .np-fav{z-index:2}
 @media (prefers-reduced-motion:reduce){
-.np-media img,.np-media.np-in img,.np-media::after{animation:none}
+.np-media img,.np-media.np-in img{animation:none}
 .np-media.np-wait img{opacity:1}
 }
 .np-badge{
@@ -9561,15 +9546,16 @@ function npWatchMotion(container){
   if(npMotionObservers.has(container)) npMotionObservers.get(container).disconnect();
   const io = new IntersectionObserver(entries=>{
     entries.forEach(e=>{
-      e.target.classList.toggle("np-idle", !e.isIntersecting);
-      // erstes Erscheinen: Dose gleitet ins Bild (npEnter)
-      if(e.isIntersecting && e.target.classList.contains("np-wait")){
-        e.target.classList.remove("np-wait");
-        e.target.classList.add("np-in");
-      }
+      const m = e.target;
+      m.classList.toggle("np-idle", !e.isIntersecting);
+      // erstes Erscheinen: Dose gleitet ins Bild (npEnter). Versteckt wird sie
+      // erst, wenn der Beobachter meldet, dass sie noch außerhalb liegt.
+      if(m.classList.contains("np-in")) return;
+      if(e.isIntersecting){ m.classList.remove("np-wait"); m.classList.add("np-in"); }
+      else m.classList.add("np-wait");
     });
   }, { rootMargin:"0px 0px -40px 0px" });
-  container.querySelectorAll(".np-media").forEach(m=>{ m.classList.add("np-wait"); io.observe(m); });
+  container.querySelectorAll(".np-media").forEach(m=> io.observe(m));
   npMotionObservers.set(container, io);
 }
 

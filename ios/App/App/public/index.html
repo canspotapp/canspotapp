@@ -4309,6 +4309,8 @@ cursor:pointer
 .np-fav .icon{width:18px;height:18px}
 .np-fav.active{color:#ef4444}
 .np-fav.active .icon{fill:currentColor;stroke:none}
+.np-bell{top:52px}
+.np-bell.active{color:var(--brand-primary-blue)}
 .np-body{padding:12px 14px 14px}
 .np-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;cursor:pointer}
 .np-brand{font-size:11.5px;color:var(--text-muted)}
@@ -9457,6 +9459,7 @@ function renderSoonPane(){
           <div class="np-media" data-np-open="${escapeHtml(d.productId)}" data-np-deal="${escapeHtml(d.id)}">
             <span class="np-badge"><svg class="icon"><use href="#i-rocket"/></svg>Startet bald</span>
             <button class="np-fav${fav ? " active" : ""}" data-np-fav="${escapeHtml(key)}" data-np-name="${escapeHtml(d.product)}" aria-label="${fav ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"}"><svg class="icon"><use href="#i-heart"/></svg></button>
+            <button class="np-fav np-bell${priceAlerts[d.productId] ? " active" : ""}" data-np-alert="${escapeHtml(d.productId)}" data-np-deal="${escapeHtml(d.id)}" aria-label="Benachrichtigung"><svg class="icon"><use href="#i-bell"/></svg></button>
             ${d.img ? `<canvas class="np-media-bg" width="16" height="16" aria-hidden="true"></canvas>` : ""}
             <img src="${escapeHtml(d.img || FALLBACK_IMG)}" alt="${escapeHtml(d.product)}" loading="lazy" referrerpolicy="no-referrer">
           </div>
@@ -9635,6 +9638,16 @@ function npHandleClick(e){
     updateNotifDot();
     npRerender();
     showToast(wasFav ? `${favBtn.dataset.npName} aus Favoriten entfernt` : `${favBtn.dataset.npName} zu Favoriten hinzugefügt`);
+    return;
+  }
+  // Glocke (Demnächst im Angebot): Detailansicht mit offener Benachrichtigung,
+  // ohne bestehenden Alarm vorausgewählt „Wenn verfügbar“ (= sobald das Angebot startet).
+  const bellBtn = e.target.closest("[data-np-alert]");
+  if(bellBtn){
+    const pid = bellBtn.dataset.npAlert;
+    openProductDetail(pid, bellBtn.dataset.npDeal || undefined);
+    if(!document.getElementById("pdAlertPanel").classList.contains("open")) document.getElementById("pdAlertBtn").click();
+    if(!priceAlerts[pid]) document.querySelector('#pdAlertPanel [data-alert-mode="available"]').click();
     return;
   }
   const openBtn = e.target.closest("[data-np-open]");

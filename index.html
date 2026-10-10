@@ -2369,7 +2369,7 @@ box-shadow:var(--shadow-sm)
    .size-lg skalieren beim Heraus-/Hineinzoomen der Karte. Stufenweise statt
    stufenlos, damit die Größe nicht bei jedem einzelnen Zoom-Tick neu
    berechnet/angewendet werden muss. */
-.leaflet-store-marker.size-sm .pin-logo{width:22px;height:22px}
+.leaflet-store-marker.size-sm .pin-logo{width:24px;height:24px}
 .leaflet-store-marker.size-sm .pin-logo img{padding:2px}
 .leaflet-store-marker.size-sm .pin-price{font-size:9px;padding:1px 6px}
 .leaflet-store-marker.size-lg .pin-logo{width:38px;height:38px}
@@ -2773,18 +2773,20 @@ flex-shrink:0
 .store-row-txt{flex:1;min-width:0}
 /* Händler-Liste im Menü: eine gruppierte Karte mit Trennlinien statt
    einzelner Kästen; je Zeile Name, Adresse und einzeilig Status/Zeiten
-   (abgeschnitten, vollständig im title), rechts Entfernung + Pin. */
+   (Zeiten je Tagesblock in eigener Zeile, alles bricht um statt abgeschnitten zu werden), rechts Entfernung + Pin. */
 .menu-store-list{background:var(--bg-surface-sunken);border:1px solid var(--border-subtle);border-radius:var(--radius-md);overflow:hidden}
-.menu-store{display:flex;align-items:center;gap:12px;padding:10px 12px}
+.menu-store{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 6px}
+#menuStoresPanel .menu-acc-panel-inner{padding-left:6px;padding-right:6px}
 .menu-store + .menu-store{border-top:1px solid var(--border-subtle)}
 .menu-store-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .menu-store-txt b{font-size:13.5px;color:var(--text-primary)}
-.menu-store-addr,.menu-store-status{font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.menu-store-addr,.menu-store-status,.menu-store-hours{font-size:11.5px;line-height:1.4;color:var(--text-muted)}
 .menu-store-status{display:block;font-weight:600}
 .menu-store-status .open-dot{margin-right:5px;vertical-align:middle;position:relative;top:-1px}
 .menu-store-status.open{color:var(--status-success-text)}
-.menu-store-status i{font-style:normal;font-weight:400;color:var(--text-muted)}
-.menu-store-go{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;color:var(--brand-primary-blue);font-size:11px;font-weight:700}
+.menu-store-hours{display:block}
+.menu-store-go{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;color:var(--brand-primary-blue);font-size:11px;font-weight:700}
+.menu-store-go .icon{width:26px;height:26px}
 :root[data-theme="dark"] .menu-store-go{color:var(--brand-primary-light)}
 /* Händler-Liste im Menü: Hinweis oben und Quellenangabe OpenStreetMap unten. */
 .store-list-intro{margin:2px 2px 8px;font-size:11.5px;color:var(--text-muted)}
@@ -3501,6 +3503,11 @@ align-items:center;
 gap:14px;
 margin-top:6px
 }
+/* Neutrale Händler-Kürzel (storeMonoImg): füllen die Fläche ganz aus,
+   ohne weißen Rahmen/Innenabstand; Kartenpins mit weißem Ring */
+img[src*="canspot-mono"]{padding:0 !important;border:0 !important;background:none !important;object-fit:cover}
+.pin-logo:has(img[src*="canspot-mono"]){border-color:#fff !important}
+.leaflet-store-marker.selected .pin-logo:has(img[src*="canspot-mono"]){border-color:var(--brand-primary-dark) !important}
 .store-detail-logo{
 width:56px;
 height:56px;
@@ -3721,7 +3728,7 @@ background:rgba(10,13,24,.32)
 position:absolute;
 top:var(--menu-top,64px);
 right:var(--menu-right,12px);
-width:min(340px,calc(100vw - 24px));
+width:min(420px,calc(100vw - 8px - var(--menu-right,12px)));
 max-width:none;
 max-height:calc(100vh - var(--menu-top,64px) - var(--menu-bottom,12px));
 max-height:calc(100dvh - var(--menu-top,64px) - var(--menu-bottom,12px));
@@ -6250,8 +6257,31 @@ const FALLBACK_IMG = "data:image/svg+xml," + encodeURIComponent(
 );
 
 /* Händler-Logos aus Supabase (retailers.logo_url, optional). Keine fremden
-   Logos ohne Erlaubnis (Datenquellen-Regeln); ohne Logo greift STORE_FALLBACK_IMG. */
+   Logos ohne Erlaubnis (Datenquellen-Regeln); ohne Logo greift das neutrale Kürzel (storeMonoImg). */
 let storeLogos = {};
+
+/* Neutrales Händler-Kürzel statt Logo (keine fremden Marken-Bildzeichen):
+   CanSpot-Blau, weiße Schrift, für alle Händler gleiche Schriftgröße (27 %
+   der Kantenlänge, bemessen am längsten Kürzel wie "REWE", damit nichts
+   abgeschnitten wird). Die id "canspot-mono" dient dem CSS als Erkennung. */
+function storeInitials(name){
+  const words = String(name || "").replace(/\.(de|com)$/i, "").split(/[\s+]+/).filter(Boolean);
+  if(!words.length) return "?";
+  if(words.length > 1) return words.map(w => w[0]).join("").slice(0, 3).toUpperCase();
+  return (words[0].length <= 4 ? words[0] : words[0].slice(0, 2)).toUpperCase();
+}
+const storeMonoCache = {};
+function storeMonoImg(name){
+  if(storeMonoCache[name]) return storeMonoCache[name];
+  const txt = storeInitials(name).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  return storeMonoCache[name] = "data:image/svg+xml," + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" id="canspot-mono" viewBox="0 0 40 40">'+
+    '<rect width="40" height="40" rx="12" fill="#3363ac"/>'+
+    '<text x="20" y="20" dy=".36em" text-anchor="middle" fill="#fff" font-size="10.8" font-weight="700" letter-spacing="-.2" '+
+    'font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif">'+txt+'</text></svg>'
+  );
+}
+function storeLogoSrc(name){ return storeLogos[name] || storeMonoImg(name); }
 
 const STORE_FALLBACK_IMG = "data:image/svg+xml," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'+
@@ -7399,7 +7429,7 @@ function buildDealCardEl(deal, isBest, favLiterMin){
           </span>
         </div>
         <div class="card-store">
-          <img class="store-logo" src="${escapeHtml(storeLogos[deal.store] || STORE_FALLBACK_IMG)}" alt="" loading="lazy" referrerpolicy="no-referrer">
+          <img class="store-logo" src="${escapeHtml(storeLogoSrc(deal.store))}" alt="" loading="lazy" referrerpolicy="no-referrer">
           <span class="store-name">${escapeHtml(deal.store)}${hasDistance(deal) ? ` <span class="distance">· ${deal.distanceKm} km</span>` : ""}</span>
         </div>
       </div>
@@ -7812,7 +7842,7 @@ function ensureLeafletMap(){
 function mapMarkerTierForZoom(zoom){
   if(zoom >= 16) return {name:"lg", logo:38};
   if(zoom >= 13) return {name:"md", logo:30};
-  return {name:"sm", logo:22};
+  return {name:"sm", logo:24};
 }
 
 /* Fordert den echten Standort an - auf der nativen iOS-App über das
@@ -7999,7 +8029,7 @@ function renderMapMobile(filtered){
     const icon = L.divIcon({
       className: "",
       html: `<div class="leaflet-store-marker size-${tier.name} ${selected?"selected":""}">
-        <span class="pin-logo"><img src="${escapeHtml(storeLogos[s.store] || STORE_FALLBACK_IMG)}" alt="${escapeHtml(s.store)}" referrerpolicy="no-referrer"></span>
+        <span class="pin-logo"><img src="${escapeHtml(storeLogoSrc(s.store))}" alt="${escapeHtml(s.store)}" referrerpolicy="no-referrer"></span>
         <span class="pin-price">${euro(s.minPrice)} €</span>
       </div>`,
       iconSize: [tier.logo, tier.logo + 18],
@@ -8059,7 +8089,7 @@ function showMapPopoverMobile(storeInfo){
     : "Entfernung benötigt Standortzugriff";
   wrap.innerHTML = `
     <div class="map-popover">
-      <img class="store-row-logo" src="${escapeHtml(storeLogos[storeInfo.store] || STORE_FALLBACK_IMG)}" alt="${escapeHtml(storeInfo.store)}" referrerpolicy="no-referrer">
+      <img class="store-row-logo" src="${escapeHtml(storeLogoSrc(storeInfo.store))}" alt="${escapeHtml(storeInfo.store)}" referrerpolicy="no-referrer">
       <div class="map-popover-txt">
         <b>${escapeHtml(storeInfo.store)}</b>
         <span>${branch && branch.address ? escapeHtml(branch.address) : "Adresse nicht verfügbar"}</span>
@@ -8143,7 +8173,7 @@ function renderMapDesktop(filtered){
     const s = byStore[p.store];
     const selected = selectedMapStore===p.store;
     return `<button class="map-pin ${selected?"selected":""}" style="left:${p.x}%;top:${p.y}%" data-store="${escapeHtml(p.store)}">
-      <span class="pin-logo"><img src="${escapeHtml(storeLogos[p.store] || STORE_FALLBACK_IMG)}" alt="${escapeHtml(p.store)}" referrerpolicy="no-referrer"></span>
+      <span class="pin-logo"><img src="${escapeHtml(storeLogoSrc(p.store))}" alt="${escapeHtml(p.store)}" referrerpolicy="no-referrer"></span>
       <span class="pin-price">${euro(s.minPrice)} €</span>
     </button>`;
   }).join("");
@@ -8181,7 +8211,7 @@ function showMapPopoverDesktop(storeInfo){
   if(!wrap || !storeInfo) return;
   wrap.innerHTML = `
     <div class="map-popover">
-      <img class="store-row-logo" src="${escapeHtml(storeLogos[storeInfo.store] || STORE_FALLBACK_IMG)}" alt="${escapeHtml(storeInfo.store)}" referrerpolicy="no-referrer">
+      <img class="store-row-logo" src="${escapeHtml(storeLogoSrc(storeInfo.store))}" alt="${escapeHtml(storeInfo.store)}" referrerpolicy="no-referrer">
       <div class="map-popover-txt">
         <b>${escapeHtml(storeInfo.store)}</b>
         <span>${storeInfo.count} Angebot${storeInfo.count===1?"":"e"} · ab ${euro(storeInfo.minPrice)} €${kmSuffix(storeInfo.distanceKm, " entfernt")}</span>
@@ -9140,11 +9170,12 @@ function storeListRowHtml(name, logo, branch, km){
   const kmLabel = typeof km === "number" ? `${String(Math.round(km * 10) / 10).replace(".", ",")} km` : "";
   return `
     <div class="menu-store${branch ? " store-row-tap" : ""}"${branch ? ` data-store-route="${escapeHtml(branch.geo)}" role="button" tabindex="0" aria-label="Route zu ${escapeHtml(name)}"` : ""}>
-      <img class="store-row-logo" src="${escapeHtml(logo || STORE_FALLBACK_IMG)}" alt="${escapeHtml(name)}" loading="lazy" referrerpolicy="no-referrer">
+      <img class="store-row-logo" src="${escapeHtml(logo || storeMonoImg(name))}" alt="${escapeHtml(name)}" loading="lazy" referrerpolicy="no-referrer">
       <div class="menu-store-txt">
         <b>${escapeHtml(name)}</b>
         <span class="menu-store-addr">${branch && branch.address ? escapeHtml(branch.address) : "Adresse nicht erfasst"}</span>
-        <span class="menu-store-status${openNow ? " open" : ""}" title="${escapeHtml(hours)}"><span class="open-dot ${openNow?"open":""}"></span>${statusLabel}${hours ? ` <i>· ${escapeHtml(hours)}</i>` : ""}</span>
+        <span class="menu-store-status${openNow ? " open" : ""}"><span class="open-dot ${openNow?"open":""}"></span>${statusLabel}</span>
+        ${hours ? hours.split(" · ").map(h => `<span class="menu-store-hours">${escapeHtml(h)}</span>`).join("") : ""}
       </div>
       ${branch ? `<div class="menu-store-go">${kmLabel ? `<span>${kmLabel}</span>` : ""}<svg class="icon icon-md"><use href="#i-pin"/></svg></div>` : ""}
     </div>`;
@@ -9259,7 +9290,7 @@ function npNutritionNote(d){
 function npStoreRow(d){
   return `
     <button class="np-store" data-np-open="${escapeHtml(d.productId)}" data-np-deal="${escapeHtml(d.id)}">
-      <img class="store-logo" src="${escapeHtml(storeLogos[d.store] || STORE_FALLBACK_IMG)}" alt="" loading="lazy" referrerpolicy="no-referrer">
+      <img class="store-logo" src="${escapeHtml(storeLogoSrc(d.store))}" alt="" loading="lazy" referrerpolicy="no-referrer">
       <span class="np-store-name">${escapeHtml(d.store)}</span>
       ${hasDistance(d) ? `<span class="np-store-km"><svg class="icon"><use href="#i-pin"/></svg>${d.distanceKm} km</span>` : ""}
       <span class="np-store-price">${d.offerPrice===null ? "Preis folgt" : `${euro(d.offerPrice)} €`}</span>
@@ -9702,7 +9733,7 @@ function apStoreRow(r){
   }
   return `
     <button class="np-store ap-store" data-ap-open="${escapeHtml(r.productId)}"${openDeal ? ` data-ap-deal="${escapeHtml(openDeal.id)}"` : ""}>
-      <img class="store-logo" src="${escapeHtml(storeLogos[r.store] || STORE_FALLBACK_IMG)}" alt="" loading="lazy" referrerpolicy="no-referrer">
+      <img class="store-logo" src="${escapeHtml(storeLogoSrc(r.store))}" alt="" loading="lazy" referrerpolicy="no-referrer">
       <span class="np-store-name"><span>${escapeHtml(r.store)}</span>${r.units>1 ? `<span class="ap-pack">${r.units}er</span>` : ""}</span>
       ${km!==null ? `<span class="np-store-km"><svg class="icon"><use href="#i-pin"/></svg>${km} km</span>` : ""}
       <span class="ap-price">${priceHtml}</span>
@@ -11881,7 +11912,7 @@ function openHistory(dealId){
   document.getElementById("histTitle").textContent = deal.product;
 
   const histStoreLogo = document.getElementById("histStoreLogo");
-  histStoreLogo.src = storeLogos[deal.store] || STORE_FALLBACK_IMG;
+  histStoreLogo.src = storeLogoSrc(deal.store);
   histStoreLogo.alt = deal.store;
   histStoreLogo.onerror = function(){ this.src = STORE_FALLBACK_IMG; };
   document.getElementById("histStoreName").textContent = deal.store;
@@ -12079,7 +12110,7 @@ function renderOtherStores(deal){
 
   container.innerHTML = others.map(d=>`
     <div class="store-row">
-      <img class="store-row-logo" src="${escapeHtml(storeLogos[d.store] || STORE_FALLBACK_IMG)}" alt="${escapeHtml(d.store)}" loading="lazy" referrerpolicy="no-referrer">
+      <img class="store-row-logo" src="${escapeHtml(storeLogoSrc(d.store))}" alt="${escapeHtml(d.store)}" loading="lazy" referrerpolicy="no-referrer">
       <div class="store-row-txt">
         <b>${escapeHtml(d.store)}</b>
         <span>${hasDistance(d) ? `${d.distanceKm} km · ` : ""}${formatDateRange(d.validFrom, d.validUntil)}</span>
@@ -12248,7 +12279,7 @@ function renderProductStoreOnly(product){
   if(!row){
     const shops = reportedShops(product.id);
     reportedShopsProductId = product.id;
-    logo.src = shops.length === 1 ? (storeLogos[shops[0]] || STORE_FALLBACK_IMG) : STORE_FALLBACK_IMG;
+    logo.src = shops.length === 1 ? storeLogoSrc(shops[0]) : STORE_FALLBACK_IMG;
     logo.alt = "";
     document.getElementById("pdStoreName").textContent = shops.length ? shops.join(", ") : "Noch kein Händler erfasst";
     const subEl = document.getElementById("pdStoreSub");
@@ -12264,7 +12295,7 @@ function renderProductStoreOnly(product){
   const entry = productStoreEntry(product, row);
   const branch = storeBranches[entry.store];
   const openNow = branch ? isStoreOpenNow(branch) : null;
-  logo.src = storeLogos[entry.store] || STORE_FALLBACK_IMG;
+  logo.src = storeLogoSrc(entry.store);
   logo.alt = entry.store;
   logo.onerror = function(){ this.src = STORE_FALLBACK_IMG; };
   document.getElementById("pdStoreName").textContent = `${entry.store}${kmSuffix(entry.distanceKm)}`;
@@ -12315,7 +12346,7 @@ function renderProductOffer(deal){
   const branch = storeBranches[deal.store];
   const openNow = branch ? isStoreOpenNow(branch) : null;
   const logo = document.getElementById("pdStoreLogo");
-  logo.src = storeLogos[deal.store] || STORE_FALLBACK_IMG;
+  logo.src = storeLogoSrc(deal.store);
   logo.alt = deal.store;
   logo.onerror = function(){ this.src = STORE_FALLBACK_IMG; };
   document.getElementById("pdStoreName").textContent = `${deal.store}${kmSuffix(deal.distanceKm)}`;
@@ -12831,7 +12862,7 @@ function renderStoreDetailMapDesktop(deal){
     <div class="map-canvas">
       ${rings}
       <div class="map-pin selected" style="left:${x}%;top:${y}%">
-        <span class="pin-logo"><img src="${escapeHtml(storeLogos[deal.store] || STORE_FALLBACK_IMG)}" alt="${escapeHtml(deal.store)}" referrerpolicy="no-referrer"></span>
+        <span class="pin-logo"><img src="${escapeHtml(storeLogoSrc(deal.store))}" alt="${escapeHtml(deal.store)}" referrerpolicy="no-referrer"></span>
         <span class="pin-price">${hasDistance(deal) ? `${deal.distanceKm} km` : ""}</span>
       </div>
       <div class="map-user"></div>
@@ -12888,7 +12919,7 @@ function renderStoreDetailMapMobile(deal){
     const icon = L.divIcon({
       className: "",
       html: `<div class="leaflet-store-marker size-md selected">
-        <span class="pin-logo"><img src="${escapeHtml(storeLogos[deal.store] || STORE_FALLBACK_IMG)}" alt="${escapeHtml(deal.store)}" referrerpolicy="no-referrer"></span>
+        <span class="pin-logo"><img src="${escapeHtml(storeLogoSrc(deal.store))}" alt="${escapeHtml(deal.store)}" referrerpolicy="no-referrer"></span>
         <span class="pin-price">${hasDistance(deal) ? `${deal.distanceKm} km` : ""}</span>
       </div>`,
       iconSize: [30, 48],
@@ -12962,7 +12993,7 @@ function openStoreDetail(dealOrEntry){
   const branch = storeBranches[deal.store];
 
   const logo = document.getElementById("storeDetailLogo");
-  logo.src = storeLogos[deal.store] || STORE_FALLBACK_IMG;
+  logo.src = storeLogoSrc(deal.store);
   logo.alt = deal.store;
   logo.onerror = function(){ this.src = STORE_FALLBACK_IMG; };
 
@@ -13491,7 +13522,7 @@ function mapBranchRow(b){
   return {
     id: b.id,
     retailer: retailerName,
-    logo: b.retailer.logo_url || STORE_FALLBACK_IMG,
+    logo: b.retailer.logo_url || storeMonoImg(retailerName),
     address: [b.street, place].filter(Boolean).join(", ") || null,
     geo: `${lat},${lng}`,
     open: parseSqlTimeToHourFloat(b.opens_at),

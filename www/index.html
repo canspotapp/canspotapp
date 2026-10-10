@@ -4217,17 +4217,29 @@ radial-gradient(circle 92px at 72% 59%,var(--np-a2) 0%,transparent 100%),
 linear-gradient(160deg,#171d2c 0%,#10141c 100%)
 }
 /* Bühne (Neuheiten und Coming Soon): Hintergrund und Farbschein stehen
-   still, nur die Dose schwebt. will-change/translate3d geben ihr eine
-   eigene Grafikebene, damit die Bewegung fließend statt in ganzen Pixeln
-   läuft. */
+   still. Die Dose gleitet beim ersten Erscheinen leicht vergrößert ins Bild
+   (npEnter) und dreht sich danach langsam in 3D hin und her (npSway); ein
+   heller Lichtstreif zieht ab und zu über die Bühne (npShine). */
 .np-media img{
 height:108px;
 max-width:50%;
 object-fit:contain;
-animation:npFloat 8s cubic-bezier(.37,0,.63,1) infinite;
+animation:npSway 7s cubic-bezier(.45,0,.55,1) infinite;
 will-change:transform;
 -webkit-backface-visibility:hidden;
 backface-visibility:hidden
+}
+.np-media.np-wait img{opacity:0;animation:none}
+.np-media.np-in img{animation:npEnter .8s cubic-bezier(.2,.9,.25,1.12) both, npSway 7s cubic-bezier(.45,0,.55,1) .8s infinite}
+.np-media::after{
+content:"";
+position:absolute;
+inset:0;
+z-index:1;
+pointer-events:none;
+background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.16) 50%,transparent 65%);
+transform:translateX(-120%);
+animation:npShine 7s ease-in-out 1.2s infinite
 }
 /* Farbschein dahinter: das Produktbild, einmalig winzig in ein Canvas
    gerechnet und weichgezeichnet (npPaintGlow), hier nur vergrößert
@@ -4246,33 +4258,32 @@ opacity:.5
 }
 :root[data-theme="dark"] .np-media .np-media-bg{opacity:.62}
 /* jede zweite Karte versetzt, damit nichts im Gleichtakt läuft */
-.np-card:nth-child(2n) .np-media img{animation-delay:-4s}
-/* Eine unsichtbar kleine Drehung verhindert, dass Browser die Position auf
-   ganze Pixel runden (sonst ruckelt die langsame Bewegung in Stufen).
-   Firefox wertet Drehungen unter ca. 0,014° noch als gerade und rundet
-   trotzdem, daher .03deg (verschiebt die Oberkante um 0,06px). */
-@keyframes npFloat{
-0%,100%{transform:translate3d(0,2px,0) rotate(.03deg)}
-50%{transform:translate3d(0,-4px,0) rotate(.03deg)}
+.np-card:nth-child(2n) .np-media.np-in img{animation-delay:0s,-3.5s}
+.np-card:nth-child(2n) .np-media::after{animation-delay:4.7s}
+@keyframes npEnter{
+0%{opacity:0;transform:perspective(700px) translate3d(0,22px,0) scale(.88) rotateY(-18deg)}
+100%{opacity:1;transform:perspective(700px) translate3d(0,0,0) scale(1) rotateY(-9deg)}
 }
-/* Firefox: ohne eigene Grafikebene und mit reinem 2D-Transform zeichnet er
-   die Dose in jedem Bild an die exakte Position. Mit Ebene (will-change,
-   backface-visibility, translate3d) setzt er sie in Gerätepixel-Stufen,
-   das ruckelt bei langsamer Bewegung. */
+@keyframes npSway{
+0%,100%{transform:perspective(700px) translate3d(0,0,0) rotateY(-9deg) rotateZ(-1deg)}
+50%{transform:perspective(700px) translate3d(0,-4px,0) rotateY(9deg) rotateZ(1deg)}
+}
+@keyframes npShine{
+0%{transform:translateX(-120%)}
+22%,100%{transform:translateX(120%)}
+}
+/* Firefox: ohne eigene Grafikebene, sonst ruckelt die langsame Bewegung. */
 .ua-firefox .np-media img{
-animation-name:npFloatFx;
 will-change:auto;
 -webkit-backface-visibility:visible;
 backface-visibility:visible
 }
-@keyframes npFloatFx{
-0%,100%{transform:translateY(2px) rotate(.03deg)}
-50%{transform:translateY(-4px) rotate(.03deg)}
-}
 /* Karten außerhalb des sichtbaren Bereichs pausieren (npWatchMotion) */
-.np-media.np-idle img{animation-play-state:paused}
+.np-media.np-idle img,.np-media.np-idle::after{animation-play-state:paused}
+.np-media .np-badge,.np-media .np-fav{z-index:2}
 @media (prefers-reduced-motion:reduce){
-.np-media img,.ua-firefox .np-media img{animation:none}
+.np-media img,.np-media.np-in img,.np-media::after{animation:none}
+.np-media.np-wait img{opacity:1}
 }
 .np-badge{
 position:absolute;
@@ -9545,9 +9556,16 @@ function npWatchMotion(container){
   /* je Bereich ein Beobachter; beim Neuzeichnen alte Karten loslassen */
   if(npMotionObservers.has(container)) npMotionObservers.get(container).disconnect();
   const io = new IntersectionObserver(entries=>{
-    entries.forEach(e=> e.target.classList.toggle("np-idle", !e.isIntersecting));
-  }, { rootMargin:"80px 0px" });
-  container.querySelectorAll(".np-media").forEach(m=> io.observe(m));
+    entries.forEach(e=>{
+      e.target.classList.toggle("np-idle", !e.isIntersecting);
+      // erstes Erscheinen: Dose gleitet ins Bild (npEnter)
+      if(e.isIntersecting && e.target.classList.contains("np-wait")){
+        e.target.classList.remove("np-wait");
+        e.target.classList.add("np-in");
+      }
+    });
+  }, { rootMargin:"0px 0px -40px 0px" });
+  container.querySelectorAll(".np-media").forEach(m=>{ m.classList.add("np-wait"); io.observe(m); });
   npMotionObservers.set(container, io);
 }
 

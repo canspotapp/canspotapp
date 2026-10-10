@@ -2771,6 +2771,21 @@ padding:2px;
 flex-shrink:0
 }
 .store-row-txt{flex:1;min-width:0}
+/* Händler-Liste im Menü: eine gruppierte Karte mit Trennlinien statt
+   einzelner Kästen; je Zeile Name, Adresse und einzeilig Status/Zeiten
+   (abgeschnitten, vollständig im title), rechts Entfernung + Pin. */
+.menu-store-list{background:var(--bg-surface-sunken);border:1px solid var(--border-subtle);border-radius:var(--radius-md);overflow:hidden}
+.menu-store{display:flex;align-items:center;gap:12px;padding:10px 12px}
+.menu-store + .menu-store{border-top:1px solid var(--border-subtle)}
+.menu-store-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.menu-store-txt b{font-size:13.5px;color:var(--text-primary)}
+.menu-store-addr,.menu-store-status{font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.menu-store-status{display:block;font-weight:600}
+.menu-store-status .open-dot{margin-right:5px;vertical-align:middle;position:relative;top:-1px}
+.menu-store-status.open{color:var(--status-success-text)}
+.menu-store-status i{font-style:normal;font-weight:400;color:var(--text-muted)}
+.menu-store-go{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;color:var(--brand-primary-blue);font-size:11px;font-weight:700}
+:root[data-theme="dark"] .menu-store-go{color:var(--brand-primary-light)}
 /* Händler-Liste im Menü: Hinweis oben und Quellenangabe OpenStreetMap unten. */
 .store-list-intro{margin:2px 2px 8px;font-size:11.5px;color:var(--text-muted)}
 .store-row-txt .store-row-line{display:block}
@@ -9120,17 +9135,18 @@ function nearbySourceNote(){
 
 function storeListRowHtml(name, logo, branch, km){
   const openNow = branch ? isStoreOpenNow(branch) : null;
-  const statusLabel = openNow===null ? "Öffnungszeiten unbekannt" : (openNow ? "Jetzt geöffnet" : "Aktuell geschlossen");
+  const statusLabel = openNow===null ? "Zeiten unbekannt" : (openNow ? "Geöffnet" : "Geschlossen");
+  const hours = branch ? formatHours(branch) : "";
+  const kmLabel = typeof km === "number" ? `${String(Math.round(km * 10) / 10).replace(".", ",")} km` : "";
   return `
-    <div class="store-row${branch ? " store-row-tap" : ""}" style="align-items:flex-start"${branch ? ` data-store-route="${escapeHtml(branch.geo)}" role="button" tabindex="0" aria-label="Route zu ${escapeHtml(name)}"` : ""}>
+    <div class="menu-store${branch ? " store-row-tap" : ""}"${branch ? ` data-store-route="${escapeHtml(branch.geo)}" role="button" tabindex="0" aria-label="Route zu ${escapeHtml(name)}"` : ""}>
       <img class="store-row-logo" src="${escapeHtml(logo || STORE_FALLBACK_IMG)}" alt="${escapeHtml(name)}" loading="lazy" referrerpolicy="no-referrer">
-      <div class="store-row-txt">
-        <b>${escapeHtml(name)}${typeof km === "number" ? kmSuffix(Math.round(km * 10) / 10) : ""}</b>
-        <span class="open-status" style="margin-top:2px"><span class="open-dot ${openNow?"open":""}"></span>${statusLabel}</span>
-        <span class="store-row-line">${branch && branch.address ? escapeHtml(branch.address) : "Adresse nicht erfasst"}</span>
-        <span class="store-row-line">${branch ? escapeHtml(formatHours(branch)) : ""}</span>
+      <div class="menu-store-txt">
+        <b>${escapeHtml(name)}</b>
+        <span class="menu-store-addr">${branch && branch.address ? escapeHtml(branch.address) : "Adresse nicht erfasst"}</span>
+        <span class="menu-store-status${openNow ? " open" : ""}" title="${escapeHtml(hours)}"><span class="open-dot ${openNow?"open":""}"></span>${statusLabel}${hours ? ` <i>· ${escapeHtml(hours)}</i>` : ""}</span>
       </div>
-      ${branch ? `<span class="store-row-link">Route</span>` : ""}
+      ${branch ? `<div class="menu-store-go">${kmLabel ? `<span>${kmLabel}</span>` : ""}<svg class="icon icon-md"><use href="#i-pin"/></svg></div>` : ""}
     </div>`;
 }
 
@@ -9154,7 +9170,7 @@ function renderStoreListSheet(){
     container.innerHTML =
       `<div class="store-list-intro">Nächster Markt je Kette, bis ${radius} km um ${where}</div>` +
       (rows.length
-        ? rows.map(r => storeListRowHtml(r.branch.retailer, r.branch.logo, r.branch, r.km)).join("")
+        ? `<div class="menu-store-list">${rows.map(r => storeListRowHtml(r.branch.retailer, r.branch.logo, r.branch, r.km)).join("")}</div>`
         : `<div class="fav-empty">Keine Märkte im Umkreis von ${radius} km gefunden.</div>`) +
       nearbySourceNote();
   } else if(geo && !nearbyLoadFailed){
@@ -9166,7 +9182,7 @@ function renderStoreListSheet(){
       container.innerHTML = `<div class="fav-empty">Keine Händlerdaten verfügbar.</div>`;
       return;
     }
-    container.innerHTML = names.map(name => storeListRowHtml(name, storeLogos[name], storeBranches[name])).join("");
+    container.innerHTML = `<div class="menu-store-list">${names.map(name => storeListRowHtml(name, storeLogos[name], storeBranches[name])).join("")}</div>`;
   }
 
   container.querySelectorAll(".store-row-logo").forEach(img=>{

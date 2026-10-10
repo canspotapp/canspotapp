@@ -2829,6 +2829,9 @@ margin-top:8px
 .alert-mode-btn{flex:1;padding:7px 10px;border:0;border-radius:999px;background:none;color:var(--text-muted);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
 .alert-mode-btn.on{background:var(--brand-primary-blue);color:#fff}
 #pdAlertModeAvail[hidden],#pdAlertModePrice[hidden]{display:none}
+.np-alert-inline{margin:10px 0 2px}
+.np-alert-inline[hidden]{display:none}
+.np-alert-inline .alert-box{margin-top:0}
 .alert-input-row{
 display:flex;
 align-items:center;
@@ -9482,6 +9485,7 @@ function renderSoonPane(){
               </div>
               <span class="np-tag"><svg class="icon"><use href="#i-calendar"/></svg>${npShortDate(d.validFrom)}</span>
             </div>
+            <div class="np-alert-inline" data-npa="${escapeHtml(d.productId)}" data-npa-name="${escapeHtml(d.product)}" hidden></div>
             <div class="np-stores">${npStoreRow(d)}</div>
             ${nutri ? `<div class="np-nutri">${nutri.map(([v,l])=>`<div><b>${v}</b><span>${l}</span></div>`).join("")}</div><div class="np-note">${escapeHtml(npNutritionNote(d))}</div>` : ""}
             <button class="np-cta" data-np-open="${escapeHtml(d.productId)}" data-np-deal="${escapeHtml(d.id)}">Produktdetails <svg class="icon"><use href="#i-chevron-down"/></svg></button>
@@ -9658,19 +9662,76 @@ function npHandleClick(e){
     showToast(wasFav ? `${favBtn.dataset.npName} aus Favoriten entfernt` : `${favBtn.dataset.npName} zu Favoriten hinzugefügt`);
     return;
   }
-  // Glocke (Demnächst im Angebot): Detailansicht mit offener Benachrichtigung,
-  // ohne bestehenden Alarm vorausgewählt „Wenn verfügbar“ (= sobald das Angebot startet).
+  // Glocke (Demnächst im Angebot): Benachrichtigung direkt in der Karte auf-/zuklappen.
   const bellBtn = e.target.closest("[data-np-alert]");
   if(bellBtn){
-    const pid = bellBtn.dataset.npAlert;
-    openProductDetail(pid, bellBtn.dataset.npDeal || undefined);
-    if(!document.getElementById("pdAlertPanel").classList.contains("open")) document.getElementById("pdAlertBtn").click();
-    if(!priceAlerts[pid]) document.querySelector('#pdAlertPanel [data-alert-mode="available"]').click();
+    const box = bellBtn.closest(".np-card").querySelector(".np-alert-inline");
+    if(box.hidden){ npRenderAlertInline(box); box.hidden = false; }
+    else box.hidden = true;
     return;
   }
+  const npa = e.target.closest(".np-alert-inline");
+  if(npa){ npAlertInlineClick(e, npa); return; }
   const openBtn = e.target.closest("[data-np-open]");
   if(openBtn && products.some(p=>p.id===openBtn.dataset.npOpen)){
     openProductDetail(openBtn.dataset.npOpen, openBtn.dataset.npDeal || undefined);
+  }
+}
+/* Benachrichtigung in der Coming-Soon-Karte: gleiche Auswahl wie in der
+   Detailansicht (Wenn verfügbar / Preisalarm), Vorauswahl „Wenn verfügbar“. */
+function npRenderAlertInline(box, mode){
+  const pid = box.dataset.npa;
+  const alert = priceAlerts[pid];
+  mode = mode || (alert && alert.target != null ? "price" : "available");
+  box.dataset.mode = mode;
+  box.innerHTML = `
+    <div class="alert-box">
+      <div class="alert-mode" role="tablist" aria-label="Art der Benachrichtigung">
+        <button type="button" class="alert-mode-btn${mode==="available" ? " on" : ""}" data-npa-mode="available" role="tab" aria-selected="${mode==="available"}">Wenn verfügbar</button>
+        <button type="button" class="alert-mode-btn${mode==="price" ? " on" : ""}" data-npa-mode="price" role="tab" aria-selected="${mode==="price"}">Preisalarm</button>
+      </div>
+      ${mode==="available" ? `
+        <div class="desc" style="margin-bottom:0">Benachrichtige mich, sobald das Angebot startet bzw. das Produkt erhältlich ist.</div>
+        <div class="alert-input-row"><button type="button" class="btn primary" data-npa-avail>Benachrichtigung aktivieren</button></div>` : `
+        <div class="desc" style="margin-bottom:0">Benachrichtige mich, sobald der Preis auf … fällt</div>
+        <div class="alert-input-row">
+          <input type="text" inputmode="decimal" data-npa-input value="${alert && alert.target != null ? euro(alert.target) : ""}">
+          <span>€</span>
+          <button type="button" class="btn primary" data-npa-set>Preisalarm aktivieren</button>
+        </div>`}
+      ${alert ? `<div class="alert-active" style="display:flex"><span><svg class="icon icon-sm"><use href="#i-target"/></svg> ${alertLabel(alert)}</span><button type="button" data-npa-remove>entfernen</button></div>` : ""}
+    </div>`;
+  const input = box.querySelector("[data-npa-input]");
+  if(input) attachGermanPriceInput(input);
+}
+function npAlertInlineClick(e, box){
+  const pid = box.dataset.npa, name = box.dataset.npaName;
+  const modeBtn = e.target.closest("[data-npa-mode]");
+  if(modeBtn){ npRenderAlertInline(box, modeBtn.dataset.npaMode); return; }
+  const done = (msg)=>{
+    npRenderAlertInline(box, box.dataset.mode);
+    const bell = box.closest(".np-card").querySelector("[data-np-alert]");
+    if(bell) bell.classList.toggle("active", !!priceAlerts[pid]);
+    updateAlertsDot();
+    showToast(msg);
+  };
+  if(e.target.closest("[data-npa-avail]")){
+    if(!requireAccount("Melde dich an, um Benachrichtigungen zu speichern.")) return;
+    setPriceAlert(pid, null);
+    done(`Du wirst benachrichtigt, sobald ${name} verfügbar ist.`);
+    return;
+  }
+  if(e.target.closest("[data-npa-set]")){
+    if(!requireAccount("Melde dich an, um Preisalarme zu speichern.")) return;
+    const val = parseGermanPrice(box.querySelector("[data-npa-input]").value);
+    if(!val || val<=0) return;
+    setPriceAlert(pid, val);
+    done(`Preisalarm gesetzt: ${name} unter ${euro(val)} €`);
+    return;
+  }
+  if(e.target.closest("[data-npa-remove]")){
+    removePriceAlert(pid);
+    done("Benachrichtigung entfernt.");
   }
 }
 document.getElementById("newSoonPage").addEventListener("click", npHandleClick);

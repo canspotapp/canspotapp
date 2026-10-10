@@ -2938,6 +2938,8 @@ font-size:12.5px
 .ap-shops-list{display:flex;flex-wrap:wrap;gap:6px 12px;flex:0 0 auto;max-width:60%}
 .ap-shop{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--text-primary)}
 .ap-shop .icon{color:var(--text-muted)}
+.ap-shop-far{color:var(--text-muted);font-weight:500}
+.ap-shop small{margin-left:4px;font-size:10.5px;font-weight:500;color:var(--text-disabled)}
 .ap-shops-note{flex:0 1 auto;min-width:0;font-size:10.5px;color:var(--text-disabled);text-align:right}
 .ap-ref-price{font-size:16px;font-weight:800;color:var(--text-primary);white-space:nowrap}
 .ap-ref-price.ap-price-none{font-size:13px;font-weight:700;color:var(--text-muted)}
@@ -8472,6 +8474,10 @@ function showProductsView(){
   newViewEl.style.display = "none";
   productsViewEl.style.display = "block";
   renderProductsView();
+  // Märkte im Umkreis nachladen, dann "nicht in der Nähe" markieren.
+  if(!nearbyChains) loadNearbyBranches().then(()=>{
+    if(nearbyBranches && productsViewEl.style.display === "block") renderProductsView();
+  });
 }
 
 document.getElementById("navHome").addEventListener("click", ()=>{
@@ -9648,6 +9654,15 @@ function retailerLine(productId){
   const shops = reportedShops(productId);
   return shops.length ? `Laut Meldungen erhältlich bei: ${shops.join(", ")}` : "";
 }
+/* Ketten mit Filiale im Umkreis (null = noch nicht geladen). */
+function nearbyChainSet(){
+  const geo = nearbyReferenceGeo();
+  if(!geo || !nearbyBranches) return null;
+  const radius = nearbyRadiusKm();
+  return new Set(nearbyBranches.filter(b=>haversineKm(geo, parseGeo(b.geo)) <= radius).map(b=>b.retailer));
+}
+let nearbyChains = null;
+const ONLINE_SHOPS = new Set(["mytime.de"]);
 function apRefBlock(p){
   const ref = PRODUCT_AVG_PRICES[p.id];
   const shops = reportedShops(p.id);
@@ -9656,7 +9671,11 @@ function apRefBlock(p){
       <span class="ap-ref-label">${avgPriceLabel(ref)}</span>
       ${ref ? `<b class="ap-ref-price">${euro(ref.price)} €</b>` : `<b class="ap-ref-price ap-price-none">Preis folgt</b>`}
     </div>
-    ${shops.length ? `<div class="ap-shops"><span class="ap-shops-list">${shops.map(n=>`<span class="ap-shop"><svg class="icon icon-xs"><use href="#i-pin"/></svg>${escapeHtml(n)}</span>`).join("")}</span><span class="ap-shops-note">Alle Angaben ohne Gewähr, können abweichen</span></div>` : ""}`;
+    ${shops.length ? `<div class="ap-shops"><span class="ap-shops-list">${shops.map(n=>{
+      const online = ONLINE_SHOPS.has(n);
+      const far = !online && nearbyChains && !nearbyChains.has(n);
+      return `<span class="ap-shop${far ? " ap-shop-far" : ""}"><svg class="icon icon-xs"><use href="#i-pin"/></svg>${escapeHtml(n)}${far ? `<small>nicht in der Nähe</small>` : online ? `<small>online</small>` : ""}</span>`;
+    }).join("")}</span><span class="ap-shops-note">Alle Angaben ohne Gewähr, können abweichen</span></div>` : ""}`;
 }
 /* Händler-Zeile mit gemeldeten Märkten: nächste OSM-Filiale dieser Ketten
    suchen (branches_in_area, wie im Menü "Händler"); Tipp öffnet die Route. */
@@ -9674,20 +9693,25 @@ async function linkNearestReportedShop(productId, shops){
   // Ketten mit Filiale im Umkreis zuerst (nächste oben), danach die übrigen A–Z.
   const list = shops.map(name=>({name, branch: nearest[name]?.branch || null, km: nearest[name]?.km ?? null}))
     .sort((a,b)=>(a.km ?? Infinity) - (b.km ?? Infinity) || a.name.localeCompare(b.name, "de"));
-  renderReportedShops(list);
+  renderReportedShops(list, true);
 }
 /* Erster Markt in der Händler-Zeile, weitere untereinander darunter
    (#pdMoreStores, ohne Aufklappen). Mit Filiale: Tipp öffnet die Route. */
 function reportedShopLine(s){
   return s.branch ? `${s.name}${kmSuffix(Math.round(s.km * 10) / 10)}` : s.name;
 }
-function renderReportedShops(list){
+function reportedShopSub(s, loaded){
+  if(s.branch) return s.branch.address ? `Nächster Markt: ${s.branch.address}` : "Nächster Markt";
+  if(ONLINE_SHOPS.has(s.name)) return "Onlineshop";
+  return loaded ? `Kein Markt im Umkreis von ${nearbyRadiusKm()} km` : "";
+}
+function renderReportedShops(list, loaded = false){
   const storeRow = document.getElementById("pdStoreRow");
   const first = list[0];
   document.getElementById("pdStoreName").textContent = reportedShopLine(first);
   const subEl = document.getElementById("pdStoreSub");
-  subEl.textContent = first.branch ? (first.branch.address ? `Nächster Markt: ${first.branch.address}` : "Nächster Markt") : "";
-  subEl.hidden = !first.branch;
+  subEl.textContent = reportedShopSub(first, loaded);
+  subEl.hidden = !subEl.textContent;
   storeRow.onclick = first.branch ? ()=> openStoreRoute(first.branch.geo) : null;
   storeRow.querySelector(".pd-row-arrow").style.visibility = first.branch ? "" : "hidden";
   const box = document.getElementById("pdMoreStores");
@@ -9695,7 +9719,7 @@ function renderReportedShops(list){
   if(!rest.length){ box.hidden = true; box.innerHTML = ""; return; }
   box.innerHTML = `<div class="pd-shop-list">${rest.map((s, i)=>`
     <button type="button" class="pd-shop-row" data-i="${i}"${s.branch ? "" : " disabled"}>
-      <span class="pd-store-txt"><b>${escapeHtml(reportedShopLine(s))}</b>${s.branch && s.branch.address ? `<span>Nächster Markt: ${escapeHtml(s.branch.address)}</span>` : ""}</span>
+      <span class="pd-store-txt"><b>${escapeHtml(reportedShopLine(s))}</b>${reportedShopSub(s, loaded) ? `<span>${escapeHtml(reportedShopSub(s, loaded))}</span>` : ""}</span>
       ${s.branch ? `<svg class="icon icon-md pd-row-arrow"><use href="#i-chevron-down"/></svg>` : ""}
     </button>`).join("")}</div>`;
   box.querySelectorAll(".pd-shop-row").forEach(btn=>{
@@ -9779,6 +9803,7 @@ document.addEventListener("keydown", (e)=>{
 });
 
 function renderProductsView(){
+  nearbyChains = nearbyChainSet();
   const brands = [...new Set([...products.map(p=>p.brand), ...allBrandNames])].sort((a,b)=>a.localeCompare(b,"de"));
   if(apBrand!=="Alle" && !brands.includes(apBrand)) apBrand = "Alle";
   const shown = products

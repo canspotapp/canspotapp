@@ -4081,6 +4081,18 @@ border-radius:var(--radius-xl);
 box-shadow:var(--shadow-sm)
 }
 .ap-head{display:flex;align-items:center;gap:12px;cursor:pointer}
+.fav-nodeal{margin-top:16px}
+.fav-nodeal-row{display:flex;align-items:center;gap:12px;padding:10px 12px;margin-top:8px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);cursor:pointer}
+.fav-nodeal-row .thumb{width:44px;height:44px;border-radius:10px;object-fit:contain}
+.fav-nodeal-txt{flex:1;min-width:0;display:flex;flex-direction:column}
+.fav-nodeal-txt span{font-size:11.5px;color:var(--text-muted)}
+.fav-nodeal-txt b{font-size:14px}
+.ap-actions{display:flex;gap:6px;flex-shrink:0;margin-left:auto;align-self:flex-start}
+.ap-act{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--bg-surface);border:1px solid var(--border-subtle);color:var(--text-muted);cursor:pointer;padding:0}
+.ap-act .icon{width:17px;height:17px}
+.ap-act.active{color:#ef4444}
+.ap-act.active .icon{fill:currentColor;stroke:none}
+.ap-act-bell.active{color:var(--brand-primary-blue)}
 .ap-head .thumb{width:52px;padding:4px}
 .ap-head-txt{flex:1;min-width:0}
 .ap-name{
@@ -5785,7 +5797,7 @@ Weitere Händler <svg class="icon icon-xs store-more-chevron"><use href="#i-chev
      #pdAlertPanel weiter unten, siehe renderProductAlertPanel(). -->
 <!-- Favorit (unten links im Bild) - schaltet dasselbe favorites-Set wie das
      Herz auf der Angebotskarte (favKeyForDeal() des angezeigten Angebots).
-     Nur sichtbar, wenn ein konkretes Angebot zum Produkt existiert. -->
+     Ohne Angebot: Einzeldose (bindPdFav), damit jedes Produkt merkbar ist. -->
 <button class="btn fav pd-fav-btn" id="pdFavBtn" aria-label="Favorit" aria-pressed="false" style="display:none"><svg class="icon"><use href="#i-heart"/></svg></button>
 <button class="btn pd-alert-btn" id="pdAlertBtn" aria-label="Preisalarm" aria-expanded="false" aria-controls="pdAlertPanel">
 <svg class="icon icon-md"><use href="#i-bell"/></svg>
@@ -7358,7 +7370,41 @@ function render(){
     }
   }
 
+  if(viewFavoritesOnly && currentUser && viewMode==="list") appendFavoritesWithoutDeal(filtered.length===0);
   renderMap(filtered);
+}
+
+/* Favoriten ohne laufendes oder kommendes Angebot: eigener Abschnitt unter den
+   Angebotskarten, damit gemerkte Produkte nicht verschwinden. */
+function appendFavoritesWithoutDeal(replaceEmpty){
+  const withDeal = new Set([...deals.filter(d=>daysUntil(d.validUntil)>=0), ...soonDeals].map(d=>favKeyForDeal(d)));
+  const items = [...favorites].filter(k=>!withDeal.has(k))
+    .map(k=>({key:k, product: products.find(p=>p.id===favProductId(k)), units: favUnitsFromKey(k)}))
+    .filter(x=>x.product)
+    .sort((a,b)=>a.product.brand.localeCompare(b.product.brand,"de") || a.product.name.localeCompare(b.product.name,"de"));
+  if(!items.length) return;
+  const wrap = document.createElement("div");
+  wrap.className = "fav-nodeal";
+  wrap.innerHTML = `<div class="field-label">Gemerkt, derzeit ohne Angebot</div>` + items.map(x=>`
+    <div class="fav-nodeal-row" data-fav-open="${escapeHtml(x.product.id)}" role="button" tabindex="0">
+      <img class="thumb" src="${escapeHtml(x.product.img || FALLBACK_IMG)}" alt="" loading="lazy" referrerpolicy="no-referrer">
+      <div class="fav-nodeal-txt"><span>${escapeHtml(x.product.brand)} · ${x.units>1 ? `${x.units} × ` : ""}${x.product.sizeMl} ml</span><b>${escapeHtml(x.product.name)}</b></div>
+      <button type="button" class="ap-act active" data-fav-remove="${escapeHtml(x.key)}" aria-label="Aus Favoriten entfernen"><svg class="icon"><use href="#i-heart"/></svg></button>
+    </div>`).join("");
+  if(replaceEmpty) dealsContainer.innerHTML = "";
+  dealsContainer.appendChild(wrap);
+  wrap.addEventListener("click", e=>{
+    const rm = e.target.closest("[data-fav-remove]");
+    if(rm){
+      toggleFavorite(rm.dataset.favRemove);
+      render();
+      updateNotifDot();
+      showToast("Aus Favoriten entfernt");
+      return;
+    }
+    const row = e.target.closest("[data-fav-open]");
+    if(row) openProductDetail(row.dataset.favOpen);
+  });
 }
 
 /* Hervorgehobene Karte "Bester Deal der Woche" (Auswahl-Logik siehe render()).
@@ -9827,6 +9873,10 @@ function renderProductsView(){
           <div class="ap-tags">${onOffer ? `<span class="info-badge green"><svg class="icon icon-xs"><use href="#i-tag"/></svg> Im Angebot</span>` : ""}${p.isNew ? `<span class="ap-tag-new">Neu</span>` : ""}</div>
         </div>
         ${priced.length>1 ? `<div class="ap-from"><span>ab</span><b>${euro(from)} €</b></div>` : ""}
+        <div class="ap-actions">
+          <button type="button" class="ap-act${favorites.has(apFavKey(p.id)) ? " active" : ""}" data-ap-fav="${escapeHtml(p.id)}" aria-label="${favorites.has(apFavKey(p.id)) ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"}"><svg class="icon"><use href="#i-heart"/></svg></button>
+          <button type="button" class="ap-act ap-act-bell${priceAlerts[p.id] ? " active" : ""}" data-ap-alert="${escapeHtml(p.id)}" aria-label="Preisalarm"><svg class="icon"><use href="#i-bell"/></svg></button>
+        </div>
       </div>
       ${rows.length
         ? `<div class="np-stores">${rows.map(apStoreRow).join("")}</div>${withPfand ? `<div class="np-note">Preise zzgl. ${euro(withPfand.pfand)} € Pfand pro Dose</div>` : ""}`
@@ -9869,9 +9919,35 @@ productsViewEl.addEventListener("click", (e)=>{
     renderProductsView();
     return;
   }
+  const favBtn = e.target.closest("[data-ap-fav]");
+  if(favBtn){
+    if(!requireAccount("Melde dich an, um Favoriten zu speichern.")) return;
+    const p = products.find(x=>x.id===favBtn.dataset.apFav);
+    const wasFav = toggleFavorite(apFavKey(favBtn.dataset.apFav));
+    if(!wasFav) triggerFavPop(favBtn.querySelector(".icon"));
+    favBtn.classList.toggle("active", !wasFav);
+    render();
+    updateNotifDot();
+    showToast(wasFav ? `${p.name} aus Favoriten entfernt` : `${p.name} zu Favoriten hinzugefügt`);
+    return;
+  }
+  const bellBtn = e.target.closest("[data-ap-alert]");
+  if(bellBtn){
+    openProductDetail(bellBtn.dataset.apAlert);
+    const btn = document.getElementById("pdAlertBtn");
+    if(!document.getElementById("pdAlertPanel").classList.contains("open")) btn.click();
+    return;
+  }
   const openEl = e.target.closest("[data-ap-open]");
   if(openEl) openProductDetail(openEl.dataset.apOpen, openEl.dataset.apDeal || undefined);
 });
+/* Favorit in "Alle Produkte": günstigstes laufendes Angebot bestimmt die
+   Packungsgröße (wie in der Detailansicht), sonst die Einzeldose. */
+function apFavKey(productId){
+  const best = deals.filter(d=>d.productId===productId && daysUntil(d.validFrom)<=0 && daysUntil(d.validUntil)>=0)
+    .sort((a,b)=>a.offerPrice-b.offerPrice)[0];
+  return favKeyFor(productId, best ? best.units : UNITS_FALLBACK);
+}
 productsViewEl.addEventListener("keydown", (e)=>{
   const head = e.target.closest(".ap-head");
   if(head && (e.key === "Enter" || e.key === " ")){
@@ -12209,7 +12285,10 @@ function openProductDetail(productId, dealId){
   renderSimilarProducts(product);
   renderProductRatingLine(productId);
   renderProductOffer(dealToShare || soonDeal);
-  if(!(dealToShare || soonDeal)) renderProductStoreOnly(product);
+  if(!(dealToShare || soonDeal)){
+    renderProductStoreOnly(product);
+    bindPdFav(favKeyFor(product.id, UNITS_FALLBACK), product.name);
+  }
   renderProductRef(product, dealToShare || soonDeal);
 
   openSheet("productDetailOverlay");
@@ -12399,6 +12478,13 @@ function renderProductOffer(deal){
   document.getElementById("pdRouteBtn").onclick = ()=>{ if(branch) openStoreRoute(branch.geo); };
   footerEl.style.display = branch ? "" : "none";
 
+  bindPdFav(key, deal.product);
+}
+
+/* Herz in der Detailansicht: mit Angebot dessen Packungsgröße, sonst die
+   Einzeldose (UNITS_FALLBACK) - so lässt sich jedes Produkt merken. */
+function bindPdFav(key, name){
+  const favBtn = document.getElementById("pdFavBtn");
   const syncFav = ()=>{
     const on = favorites.has(key);
     favBtn.classList.toggle("active", on);
@@ -12412,8 +12498,9 @@ function renderProductOffer(deal){
     syncFav();
     if(!wasFav) triggerFavPop(favBtn.querySelector(".icon"));
     render();
+    if(productsViewEl.style.display === "block") renderProductsView();
     updateNotifDot();
-    showToast(wasFav ? `${deal.product} aus Favoriten entfernt` : `${deal.product} zu Favoriten hinzugefügt`);
+    showToast(wasFav ? `${name} aus Favoriten entfernt` : `${name} zu Favoriten hinzugefügt`);
   };
 }
 
@@ -12777,10 +12864,13 @@ function renderProductAlertPanel(productId, deal){
   const setBtn = document.getElementById("pdAlertSetBtn");
   const activeMsg = document.getElementById("pdAlertActiveMsg");
 
-  btn.style.display = deal ? "" : "none";
+  // Glocke immer zeigen, auch ohne laufendes Angebot (Alarm greift, sobald eins kommt).
+  const product = products.find(p=>p.id===productId);
+  const name = deal ? deal.product : (product ? product.name : "");
+  const ref = deal ? deal.offerPrice : (PRODUCT_AVG_PRICES[productId]?.price ?? null);
+  btn.style.display = "";
   panel.classList.remove("open");
   btn.setAttribute("aria-expanded", "false");
-  if(!deal) return;
 
   function renderActiveState(){
     const alert = priceAlerts[productId];
@@ -12801,7 +12891,8 @@ function renderProductAlertPanel(productId, deal){
   }
 
   const existingAlert = priceAlerts[productId];
-  input.value = euro(existingAlert ? existingAlert.target : Math.max(0, +(deal.offerPrice - 0.10).toFixed(2)));
+  input.value = existingAlert ? euro(existingAlert.target)
+    : typeof ref === "number" ? euro(Math.max(0, +(ref - 0.10).toFixed(2))) : "";
   renderActiveState();
 
   btn.onclick = () => {
@@ -12817,7 +12908,7 @@ function renderProductAlertPanel(productId, deal){
     setPriceAlert(productId, val);
     renderActiveState();
     updateAlertsDot();
-    showToast(`Preisalarm gesetzt: ${deal.product} unter ${euro(val)} €`);
+    showToast(`Preisalarm gesetzt: ${name} unter ${euro(val)} €`);
   };
 }
 attachGermanPriceInput(document.getElementById("pdAlertPriceInput"));
